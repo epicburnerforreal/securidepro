@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no,user-scalable=no">
+    <title>Live Bus Tracking</title>
+
+    <link rel="stylesheet" href="./stuff/leaflet.css" />
+    <script src="./stuff/jquery-3.7.1.min.js"></script>
+    <script src="./stuff/leaflet.js"></script>
+    <script src="./stuff/moment.min.js"></script>
+
+    <style type="text/css">
+        body {
+            width: 100%;
+            height: 100vh;
+            margin: 0px;
+            padding: 0px;
+            overflow: hidden;
+            font-family: "Open Sans", sans-serif;
+        }
+
+        .map-container {
+            height: 100vh;
+            width: 100vw;
+            position: fixed;
+            z-index: 0;
+            top: 0px;
+            bottom: 0px;
+        }
+
+        /* --- Object Marker & Tooltip Styles --- */
+        .object-marker-box {
+            width: 30px;
+            height: 30px;
+            transform: translate(-50%, -50%);
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .omb-container {
+            border: 0px !important;
+            background: transparent;
+        }
+
+        .object-marker-img {
+            width: 100%;
+            height: 100%;
+            transition: transform 0.5s ease-in-out;
+        }
+
+        .object-marker-tooltip {
+            position: absolute;
+            top: calc(100% + 5px);
+            white-space: nowrap;
+            border: 1px solid #f6f6f6;
+            font-size: 12px;
+            text-align: center;
+            color: white;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: #2d7090;
+            box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+        }
+
+        /* --- Information Panel Styles --- */
+        #object-information-container {
+            position: fixed;
+            display: flex;
+            left: 20px;
+            bottom: 20px;
+            box-sizing: border-box;
+            width: 250px;
+            flex-direction: column;
+            z-index: 1000;
+        }
+
+        .object-information-box {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
+            display: flex;
+            width: 100%;
+            flex-direction: column;
+            border: 1px solid #bfbfbf;
+            overflow: hidden;
+        }
+
+        .obj-widget-header {
+            background: #234292;
+            padding: 10px;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .object-detail-box {
+            padding: 15px;
+        }
+
+        .oib-widget {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 8px 0;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+        }
+
+        .oib-widget:last-child {
+            border-bottom: none;
+        }
+
+        .oib-widget-label {
+            color: #666;
+            font-weight: 600;
+        }
+
+        .oib-widget-value {
+            font-weight: 700;
+            color: #333;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: white;
+            font-weight: 600;
+            background: #008000;
+        }
+
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 2000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 18px;
+            color: #234292;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="loading-overlay">Authenticating with API...</div>
+
+    <div class="map-container">
+        <div id="googleMap" style="width:100%; height:100%; z-index:0;"></div>
+    </div>
+
+    <div id="object-information-container">
+        <div class="object-information-box">
+            <div class="obj-widget-header" id="object-name">Waiting for data...</div>
+            <div class="object-detail-box">
+                <div class="oib-widget">
+                    <div class="oib-widget-label">Status</div>
+                    <div class="oib-widget-value"><span class="status-badge" id="object-status">Loading</span></div>
+                </div>
+                <div class="oib-widget">
+                    <div class="oib-widget-label">Direction</div>
+                    <div class="oib-widget-value" id="object-speed">--</div>
+                </div>
+                <div class="oib-widget" style="flex-direction: column; align-items: flex-start;">
+                    <div class="oib-widget-label" style="margin-bottom: 5px;">Last Updated</div>
+                    <div class="oib-widget-value" id="object-updated" style="font-size: 11px; color: #888;">--</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check localStorage for stored credentials
+        let username = localStorage.getItem('username');
+        let password = localStorage.getItem('password');
+
+        // If either is missing, ask the user
+        if (!username || !password) {
+            username = prompt("Please enter your username:");
+            password = prompt("Please enter your password:");
+
+            // Save to localStorage
+            if (username && password) {
+                localStorage.setItem('username', username);
+                localStorage.setItem('password', password);
+                console.log("Credentials saved.");
+            }
+        } else {
+            // If they exist, proceed with your logic
+            console.log("Welcome back, " + username);
+        }
+
+        const USER_CONFIG = {
+            PROXY_URL: "https://script.google.com/macros/s/AKfycbzZdpTC09UjEHfGc7ljwYeNT44gtwvKjdsC5jkG5eLQ3smXHLhm2iI2OqAgnEzRSNpd/exec",
+            MOBILE_NUMBER: username,
+            PASSWORD: password
+        };
+
+        // Global State Variables
+        let mymap;
+        let busMarker = null;
+        let sessionData = null;
+
+        // ==========================================
+        // 2. MATH & LOGIC HELPERS
+        // ==========================================
+        function getDistanceMeters(lat1, lng1, lat2, lng2) {
+            const R = 6371e3; // Earth radius in meters
+            const toRad = deg => (deg * Math.PI) / 180;
+
+            const dLat = toRad(lat2 - lat1);
+            const dLng = toRad(lng2 - lng1);
+
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        function calculateBearing(lat1, lng1, lat2, lng2) {
+            const toRad = deg => (deg * Math.PI) / 180;
+            const toDeg = rad => (rad * 180) / Math.PI;
+
+            const dLng = toRad(lng2 - lng1);
+            const y = Math.sin(dLng) * Math.cos(toRad(lat2));
+            const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+                Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
+
+            let brng = toDeg(Math.atan2(y, x));
+            return (brng + 360) % 360;
+        }
+
+        function getCompassDirection(bearing) {
+            if (bearing === null || isNaN(bearing)) return "Stationary";
+            const val = Math.floor((bearing / 22.5) + 0.5);
+            const arr = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+            return arr[(val % 16)];
+        }
+
+        function syncCoordinates(payloadData) {
+            // Fallback for missing/malformed API structure
+            if (!payloadData || !payloadData.latitude || !payloadData.longitude) return null;
+
+            const rootLat = parseFloat(payloadData.latitude);
+            const rootLng = parseFloat(payloadData.longitude);
+            const path = payloadData.path || [];
+
+            const TOLERANCE_METERS = 15;
+
+            if (path.length < 1) {
+                return { latitude: rootLat, longitude: rootLng, source: 'no_path', direction: 'Unknown' };
+            }
+
+            const rootIndex = path.findLastIndex(point => {
+                const pLat = parseFloat(point.latitude);
+                const pLng = parseFloat(point.longitude);
+                return getDistanceMeters(rootLat, rootLng, pLat, pLng) <= TOLERANCE_METERS;
+            });
+
+            let currentLat, currentLng, searchIndex, source;
+
+            if (rootIndex !== -1) {
+                if (rootIndex < path.length - 1) {
+                    currentLat = parseFloat(path[path.length - 1].latitude);
+                    currentLng = parseFloat(path[path.length - 1].longitude);
+                    searchIndex = path.length - 2;
+                    source = 'path_newer';
+                } else {
+                    currentLat = rootLat;
+                    currentLng = rootLng;
+                    searchIndex = rootIndex - 1;
+                    source = 'synced';
+                }
+            } else {
+                currentLat = rootLat;
+                currentLng = rootLng;
+                searchIndex = path.length - 1;
+                source = 'root_newer';
+            }
+
+            let prevLat = null, prevLng = null;
+            for (let i = searchIndex; i >= 0; i--) {
+                const pLat = parseFloat(path[i].latitude);
+                const pLng = parseFloat(path[i].longitude);
+                if (getDistanceMeters(currentLat, currentLng, pLat, pLng) > TOLERANCE_METERS) {
+                    prevLat = pLat;
+                    prevLng = pLng;
+                    break;
+                }
+            }
+
+            let bearing = null;
+            if (prevLat !== null && prevLng !== null) {
+                bearing = calculateBearing(prevLat, prevLng, currentLat, currentLng);
+            }
+
+            return {
+                latitude: currentLat,
+                longitude: currentLng,
+                source: source,
+                bearing_degrees: bearing !== null ? Math.round(bearing) : null,
+                direction: getCompassDirection(bearing)
+            };
+        }
+
+        // ==========================================
+        // 3. MAP & UI LOGIC
+        // ==========================================
+        function initMap() {
+            mymap = L.map('googleMap', { zoomControl: false }).setView([20.5937, 78.9629], 5);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19
+            }).addTo(mymap);
+            L.control.zoom({ position: 'bottomright' }).addTo(mymap);
+        }
+
+        function updateBusData(data) {
+            document.getElementById('object-name').innerText = data.name || "School Bus";
+            document.getElementById('object-speed').innerText = data.direction || "--";
+            document.getElementById('object-updated').innerText = moment().format("DD-MM-YYYY hh:mm:ss A");
+
+            let statusBadge = document.getElementById('object-status');
+            let currentStatus = data.status || "Unknown";
+            statusBadge.innerText = currentStatus;
+
+            if (currentStatus.toLowerCase() === 'running') statusBadge.style.background = '#008000';
+            else if (currentStatus.toLowerCase() === 'stopped') statusBadge.style.background = '#ff0000';
+            else if (currentStatus.toLowerCase() === 'idle') statusBadge.style.background = '#ce9a00';
+            else statusBadge.style.background = '#0000ff';
+
+            if (!busMarker) {
+                let div = document.createElement("div");
+                let relative_div = document.createElement("div");
+                let tooltip = document.createElement("div");
+                let img = document.createElement("img");
+
+                relative_div.className = "object-marker-box";
+                tooltip.className = "object-marker-tooltip";
+                tooltip.innerText = data.name;
+
+                img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23234292" stroke="white" stroke-width="1"><path d="M12 2L22 20L12 17L2 20L12 2Z"/></svg>';
+                img.className = "object-marker-img";
+                img.style.transform = `rotate(${data.angle || 0}deg)`;
+
+                relative_div.appendChild(img);
+                relative_div.appendChild(tooltip);
+                div.appendChild(relative_div);
+
+                busMarker = L.marker([data.lat, data.lng], {
+                    icon: new L.DivIcon({
+                        html: div,
+                        className: "omb-container",
+                        iconSize: [30, 30],
+                        iconAnchor: [15, 15]
+                    })
+                }).addTo(mymap);
+                mymap.setView([data.lat, data.lng], 16);
+            } else {
+                busMarker.setLatLng([data.lat, data.lng]);
+                let imgElement = busMarker.getElement().querySelector('.object-marker-img');
+                if (imgElement) imgElement.style.transform = `rotate(${data.angle || 0}deg)`;
+            }
+        }
+
+        // ==========================================
+        // 4. API INTEGRATION
+        // ==========================================
+        async function loginToApp() {
+            const payload = {
+                "_action_code": "PARENT_LOGIN",
+                "unique_code": USER_CONFIG.PASSWORD,
+                "mobile_number": USER_CONFIG.MOBILE_NUMBER,
+                "_access_key": null
+            };
+
+            try {
+                const res = await fetch(USER_CONFIG.PROXY_URL, {
+                    method: "POST",
+                    body: JSON.stringify(payload)
+                });
+                const responseData = await res.json();
+
+                if (responseData.status === "SUCCESS") {
+                    sessionData = {
+                        access_key: responseData._access_key,
+                        student_seq: responseData.data.student_seq,
+                        unique_code: responseData.unique_code,
+                        name: responseData.data.student_name
+                    };
+                    document.getElementById('loading-overlay').style.display = 'none';
+                    return true;
+                } else {
+                    alert("Login failed: " + (responseData.msg || "Unknown error"));
+                    return false;
+                }
+            } catch (e) {
+                console.error("Login Error: ", e);
+                alert("Network error during login.");
+                return false;
+            }
+        }
+
+        async function fetchAndProcessNewLocation() {
+            if (!sessionData) return;
+
+            const payload = {
+                "_action_code": "GET_ROUTE_DETAILS_PARENT",
+                "_access_key": sessionData.access_key,
+                "unique_code": sessionData.unique_code,
+                "mobile_number": USER_CONFIG.MOBILE_NUMBER,
+                "student_seq": sessionData.student_seq
+            };
+
+            try {
+                const res = await fetch(USER_CONFIG.PROXY_URL, {
+                    method: "POST",
+                    body: JSON.stringify(payload)
+                });
+                const apiResponse = await res.json();
+
+                // Note: Adjust 'apiResponse.data[0]' if your JSON structure differs slightly
+                if (apiResponse.status === "SUCCESS" && apiResponse.data && apiResponse.data.length > 0) {
+                    const targetData = apiResponse.data[0];
+                    const syncedLocation = syncCoordinates(targetData);
+
+                    if (syncedLocation) {
+                        let mappedData = {
+                            name: sessionData.name || "Student Bus",
+                            lat: syncedLocation.latitude,
+                            lng: syncedLocation.longitude,
+                            angle: syncedLocation.bearing_degrees || 0,
+                            direction: syncedLocation.direction,
+                            status: targetData.isMoving ? "Running" : "Stopped"
+                        };
+                        updateBusData(mappedData);
+                    }
+                }
+            } catch (e) {
+                console.error("Tracking Fetch Error: ", e);
+            }
+        }
+
+        async function initializeTracker() {
+            initMap();
+            const loggedIn = await loginToApp();
+            if (loggedIn) {
+                fetchAndProcessNewLocation();
+                setInterval(fetchAndProcessNewLocation, 30000); // Poll every 30 seconds
+            }
+        }
+
+        $(document).ready(function () {
+            initializeTracker();
+        });
+    </script>
+</body>
+
+</html>
