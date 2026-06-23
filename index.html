@@ -31,42 +31,46 @@
         }
 
         /* --- Object Marker & Tooltip Styles --- */
-        .object-marker-box {
-            width: 30px;
-            height: 30px;
-            transform: translate(-50%, -50%);
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+        /* --- Object Marker & Tooltip Styles --- */
+.object-marker-box {
+    width: 30px;
+    height: 30px;
+    /* REMOVED: transform: translate(-50%, -50%); -> Leaflet does this for you! */
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 
-        .omb-container {
-            border: 0px !important;
-            background: transparent;
-        }
+.omb-container {
+    border: 0px !important;
+    background: transparent;
+}
 
-        .object-marker-img {
-            width: 100%;
-            height: 100%;
-            transition: transform 0.5s ease-in-out;
-        }
+.object-marker-img {
+    width: 100%;
+    height: 100%;
+    transition: transform 0.5s ease-in-out;
+    transform-origin: center center; /* Forces the rotation to happen dead-center */
+}
 
-        .object-marker-tooltip {
-            position: absolute;
-            top: calc(100% + 5px);
-            white-space: nowrap;
-            border: 1px solid #f6f6f6;
-            font-size: 12px;
-            text-align: center;
-            color: white;
-            font-weight: 700;
-            padding: 4px 8px;
-            border-radius: 4px;
-            background: #2d7090;
-            box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.3);
-            pointer-events: none;
-        }
+.object-marker-tooltip {
+    position: absolute;
+    top: calc(100% + 5px);
+    left: 50%; /* Pushes start of tooltip to center of marker */
+    transform: translateX(-50%); /* Pulls tooltip back to perfectly center it */
+    white-space: nowrap;
+    border: 1px solid #f6f6f6;
+    font-size: 12px;
+    text-align: center;
+    color: white;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: #2d7090;
+    box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+}
 
         /* --- Information Panel Styles --- */
         #object-information-container {
