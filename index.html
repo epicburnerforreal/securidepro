@@ -427,32 +427,33 @@
             };
 
             try {
-                const res = await fetch(USER_CONFIG.PROXY_URL, {
-                    method: "POST",
-                    body: JSON.stringify(payload)
-                });
-                const apiResponse = await res.json();
+    const res = await fetch(USER_CONFIG.PROXY_URL, {
+        method: "POST",
+        body: JSON.stringify(payload)
+    });
+    const apiResponse = await res.json();
 
-                // Note: Adjust 'apiResponse.data[0]' if your JSON structure differs slightly
-                if (apiResponse.status === "SUCCESS" && apiResponse.data && apiResponse.data.length > 0) {
-                    const targetData = apiResponse.data[0];
-                    const syncedLocation = syncCoordinates(targetData);
+    if (apiResponse.status === "SUCCESS") {
+        // Pass the entire root object, not apiResponse.data[0]
+        const syncedLocation = syncCoordinates(apiResponse);
 
-                    if (syncedLocation) {
-                        let mappedData = {
-                            name: sessionData.name || "Student Bus",
-                            lat: syncedLocation.latitude,
-                            lng: syncedLocation.longitude,
-                            angle: syncedLocation.bearing_degrees || 0,
-                            direction: syncedLocation.direction,
-                            status: targetData.isMoving ? "Running" : "Stopped"
-                        };
-                        updateBusData(mappedData);
-                    }
-                }
-            } catch (e) {
-                console.error("Tracking Fetch Error: ", e);
-            }
+        if (syncedLocation) {
+            let mappedData = {
+                name: sessionData.name || apiResponse.vehicle_regn || "Student Bus",
+                // Fallback to the root latitude/longitude if syncCoordinates fails to map them
+                lat: syncedLocation.latitude || apiResponse.latitude,
+                lng: syncedLocation.longitude || apiResponse.longitude,
+                angle: syncedLocation.bearing_degrees || 0,
+                direction: syncedLocation.direction,
+                // Replace targetData.isMoving with a check against the route_status
+                status: apiResponse.route_status === "ACTIVE" ? "Running" : "Stopped" 
+            };
+            updateBusData(mappedData);
+        }
+    }
+} catch (e) {
+    console.error("Tracking Fetch Error: ", e);
+}
         }
 
         async function initializeTracker() {
